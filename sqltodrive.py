@@ -132,8 +132,6 @@ def to_folder(tdir):
         about = service.about().get().execute()
         return about['rootFolderId']
     pass
-
-# print(to_folder(todir))
 # ______________________________________________________________________________
 def filestobackup(fdir):
     if not fdir:
@@ -176,8 +174,6 @@ def filestobackup(fdir):
         else:
             up_log(datetime.strftime(datetime.now(), "%Y.%m.%d %H:%M:%S") + ' ' + backupdir + ' > ' + todir + ' (all files in google drive)')
     pass
-
-# print(filestobackup(backupdir))
 # ______________________________________________________________________________
 def up_log(to_log):
     print(to_log)
@@ -215,8 +211,6 @@ def drive_up(upfiles):
             up_log(logfile + ' (md5 sums are not identical, the file transferred successfully)')
 
     pass
-
-# drive_up(filestobackup(backupdir))
 # ______________________________________________________________________________
 def create_md(name_files):
     md5files = []
