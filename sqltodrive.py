@@ -39,7 +39,7 @@ try:
 except ImportError:
     flags = None
 # ______________________________________________________________________________
-logging.basicConfig(filename='sqltogdrive_all.log',level=logging.DEBUG)
+logging.basicConfig(filename='sqltogdrive_all.log',level=logging.ERROR)
 SCOPES = 'https://www.googleapis.com/auth/drive'
 CLIENT_SECRET_FILE = 'client_secret.json'
 APPLICATION_NAME = 'backup database'
@@ -51,7 +51,6 @@ CHUNKSIZE = 2 * 1024 * 1024
 # ______________________________________________________________________________
 def get_credentials():
     home_dir = os.path.expanduser('~')
-    #credential_dir = os.path.join(home_dir, '.credentials')
     credential_dir = os.path.join('.credentials')
     if not os.path.exists(credential_dir):
         os.makedirs(credential_dir)
@@ -88,8 +87,6 @@ def drive_service():
 # ______________________________________________________________________________
 def to_folder(tdir):
     service = drive_service()
-    results_folder = service.files().list(q="mimeType='application/vnd.google-apps.folder'").execute()
-    folders_list = results_folder.get('items', [])
 
     if tdir:
         i = 0
@@ -100,30 +97,36 @@ def to_folder(tdir):
         to_dir = tdir.lstrip('/').rstrip('/').split('/')
 
         for tdir in to_dir:
+            results_folder = service.files().list(q="mimeType='application/vnd.google-apps.folder' and title='"+tdir+"'").execute()
+            folders_list = results_folder.get('items', [])
+
             for folder in folders_list:
-                if tdir == folder['title']:
-                    if not ([folder['title'], folder['id'], folder['parents'][0]['id'], folder['parents'][0]['isRoot']]) in folders:
-                        folders.append([folder['title'], folder['id'], folder['parents'][0]['id'], folder['parents'][0]['isRoot']])
+                if not ([folder['title'], folder['id'], folder['parents'][0]['id'], folder['parents'][0]['isRoot']]) in folders:
+                    folders.append([folder['title'], folder['id'], folder['parents'][0]['id'], folder['parents'][0]['isRoot']])
             pass
 
-        for folder in folders:
-            if (to_dir[0] == folder[0]) and (folder[3] == True):
-                parentfolder.append(folder)
-                del(folders[i])
-            i+=1
-            pass
-
-        while (len(parentfolder) < len(to_dir)) and (j <= (len(folders))):
+        if (len(folders) > 0):
             for folder in folders:
-                if ((folder[2] == parentfolder[(len(parentfolder) - 1)][1]) and (folder[0] == to_dir[len(parentfolder)])):
+                if (to_dir[0] == folder[0]) and (folder[3] == True):
                     parentfolder.append(folder)
-                    j = 0
-                else:
-                    j+=1
-            pass
+                    del(folders[i])
+                i+=1
+                pass
 
-        if len(parentfolder) == len(to_dir):
-            return parentfolder[len(parentfolder) - 1][1]
+            while (len(parentfolder) < len(to_dir)) and (j <= (len(folders))):
+                for folder in folders:
+                    if ((folder[2] == parentfolder[(len(parentfolder) - 1)][1]) and (folder[0] == to_dir[len(parentfolder)])):
+                        parentfolder.append(folder)
+                        j = 0
+                    else:
+                        j+=1
+                pass
+
+            if len(parentfolder) == len(to_dir):
+                return parentfolder[len(parentfolder) - 1][1]
+            else:
+                return False
+                pass
         else:
             return False
             pass
@@ -132,6 +135,8 @@ def to_folder(tdir):
         about = service.about().get().execute()
         return about['rootFolderId']
     pass
+
+# print(to_folder(todir))
 # ______________________________________________________________________________
 def filestobackup(fdir):
     if not fdir:
@@ -167,13 +172,18 @@ def filestobackup(fdir):
 
             for backupfile in backupfiles:
                 if not backupfile in k:
-                    filestobackup.append([fdir + '/' + backupfile, md5(fdir + '/' + backupfile)])
+                    if mdf:
+                        filestobackup.append([fdir + '/' + backupfile, md5(fdir + '/' + backupfile)])
+                    else:
+                        filestobackup.append([fdir + '/' + backupfile, 'emty'])
 
         if filestobackup:
             return filestobackup
         else:
             up_log(datetime.strftime(datetime.now(), "%Y.%m.%d %H:%M:%S") + ' ' + backupdir + ' > ' + todir + ' (all files in google drive)')
     pass
+
+# print(filestobackup(backupdir))
 # ______________________________________________________________________________
 def up_log(to_log):
     print(to_log)
@@ -184,7 +194,6 @@ def up_log(to_log):
 
     pass
 # ______________________________________________________________________________
-
 def drive_up(upfiles):
     service = drive_service()
 
@@ -205,12 +214,16 @@ def drive_up(upfiles):
 
         logfile = datetime.strftime(datetime.now(), "%Y.%m.%d %H:%M:%S") + ' ' + upfile[0] + ' > ' + todir
         zfile = service.files().get(fileId=request.get('id')).execute()
-        if zfile['md5Checksum'] == upfile[1]:
-            up_log(logfile + ' (md5 sums identical file transferred successfully)')
+        if mdf:
+            if zfile['md5Checksum'] == upfile[1]:
+                up_log(logfile + ' (md5 sums identical file transferred successfully)')
+            else:
+                up_log(logfile + ' (md5 sums are not identical, the file transferred successfully)')
         else:
-            up_log(logfile + ' (md5 sums are not identical, the file transferred successfully)')
-
+            up_log(logfile + ' (file transferred successfully)')
     pass
+
+# drive_up(filestobackup(backupdir))
 # ______________________________________________________________________________
 def create_md(name_files):
     md5files = []
@@ -223,16 +236,16 @@ def create_md(name_files):
     pass
 #_______________________________________________________________________________
 def main():
-    if filestobackup(backupdir):
-        if mdf:
-            mdfile = create_md(filestobackup(backupdir))
-
-            drive_up(mdfile)
-            for md_file in mdfile:
-                os.unlink(md_file[0])
-
-        drive_up(filestobackup(backupdir))
-
+    if (to_folder(todir) != False):
+        if filestobackup(backupdir):
+            if mdf:
+                mdfile = create_md(filestobackup(backupdir))
+                drive_up(mdfile)
+                for md_file in mdfile:
+                    os.unlink(md_file[0])
+            drive_up(filestobackup(backupdir))
+    else:
+        up_log('(no folder on google drive)')
     pass
 # ______________________________________________________________________________
 if __name__ == '__main__':
